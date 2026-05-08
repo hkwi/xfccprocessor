@@ -1,24 +1,24 @@
 # xfccsubjectprocessor
 
-Envoy XFCC (`x-forwarded-client-cert`) から `subject` を抽出して、OpenTelemetry Resource Attribute に保存するカスタム Processor です。
+`xfccsubjectprocessor` is a custom OpenTelemetry Collector processor that extracts the `subject` value from Envoy XFCC (`x-forwarded-client-cert`) and stores it as a Resource Attribute.
 
-OpenTelemetry Semantic Conventions で client certificate subject は `tls.client.subject` として定義されているため、デフォルトの保存先は `tls.client.subject` です。
+Because OpenTelemetry Semantic Conventions define the client certificate subject as `tls.client.subject`, the default output attribute is `tls.client.subject`.
 
-## 対応フォーマット
+## Supported Formats
 
-- `text` 形式 (例: `By=...;Hash=...;Subject="CN=client";URI=...`)
-- `json` 形式 (例: `[{"subject":"CN=client"}]` / 配列・ネストも探索)
+- `text` format (example: `By=...;Hash=...;Subject="CN=client";URI=...`)
+- `json` format (example: `[{"subject":"CN=client"}]`; arrays and nested values are also searched)
 
-入力元は OpenTelemetry の HTTP header attribute `http.request.header.x-forwarded-client-cert` 固定です。値は文字列と文字列配列の両方に対応します。
+The input attribute is fixed to the OpenTelemetry HTTP header attribute `http.request.header.x-forwarded-client-cert`. Both string and string-array values are supported.
 
-Envoy の仕様では text 形式の key は case-insensitive、`Subject` は double quote され、JSON 形式は object 配列です。この processor は実装差・中継差への耐性として、次の揺れも許容します。
+In the Envoy specification, text-format keys are case-insensitive, `Subject` is double-quoted, and the JSON format is an array of objects. To tolerate implementation and proxy differences, this processor also accepts:
 
-- text 形式の single quote
-- quote 内の `,` / `;` / `=` と escaped quote
-- quote 外の escaped separator (`\,` / `\;` / `\=`)
+- single quotes in text format
+- `,`, `;`, `=`, and escaped quotes inside quoted values
+- escaped separators outside quoted values (`\,` / `\;` / `\=`)
 - percent-encoded subject
-- 複数 HTTP header 値の結合で JSON 配列が `[...] , [...]` になった値
-- JSON field 名の大文字小文字違い、ネスト、subject 配列
+- joined JSON arrays such as `[...] , [...]`, which can appear when multiple HTTP header values are combined
+- case variations in JSON field names, nested values, and subject arrays
 
 ## Config
 
@@ -27,10 +27,10 @@ processors:
   xfccsubject: {}
 ```
 
-- `target_attribute`: 抽出した subject を書き込む Resource Attribute (default: `tls.client.subject`)
-- `overwrite`: 既存の `target_attribute` を上書きするか (default: `false`)
+- `target_attribute`: Resource Attribute to write the extracted subject to (default: `tls.client.subject`)
+- `overwrite`: whether to overwrite an existing `target_attribute` value (default: `false`)
 
-## 使い方（Collector 設定例）
+## Usage
 
 ```yaml
 receivers:
@@ -61,6 +61,6 @@ service:
       exporters: [debug]
 ```
 
-## 注意
+## Notes
 
-このリポジトリは Processor 実装本体です。Collector ディストリビューションに組み込むには、`otelcol-builder` 等で `NewFactory()` を登録してください。
+This repository contains the processor implementation. To include it in a Collector distribution, register `NewFactory()` with `otelcol-builder` or an equivalent build setup.
