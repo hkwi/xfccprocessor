@@ -1,4 +1,4 @@
-package xfccsubjectprocessor
+package xfccprocessor
 
 import (
 	"fmt"
@@ -7,8 +7,9 @@ import (
 )
 
 type Config struct {
-	TargetAttribute string `mapstructure:"target_attribute"`
-	Overwrite       bool   `mapstructure:"overwrite"`
+	TargetAttribute     string `mapstructure:"target_attribute"`
+	Overwrite           bool   `mapstructure:"overwrite"`
+	IncludeCertificates bool   `mapstructure:"include_certificates"`
 }
 
 var _ component.Config = (*Config)(nil)

@@ -1,6 +1,6 @@
-# xfccsubjectprocessor
+# xfccprocessor
 
-`xfccsubjectprocessor` is a custom OpenTelemetry Collector processor that extracts the `subject` value from Envoy XFCC (`x-forwarded-client-cert`) and stores it as a Resource Attribute.
+`xfccprocessor` is a custom OpenTelemetry Collector processor that expands values from Envoy XFCC (`x-forwarded-client-cert`) into Resource Attributes.
 
 Because OpenTelemetry Semantic Conventions define the client certificate subject as `tls.client.subject`, the default output attribute is `tls.client.subject`.
 
@@ -24,11 +24,31 @@ In the Envoy specification, text-format keys are case-insensitive, `Subject` is 
 
 ```yaml
 processors:
-  xfccsubject: {}
+  xfccprocessor: {}
 ```
 
 - `target_attribute`: Resource Attribute to write the extracted subject to (default: `tls.client.subject`)
 - `overwrite`: whether to overwrite an existing `target_attribute` value (default: `false`)
+- `include_certificates`: whether to expand heavy certificate values (`Cert` and `Chain`) (default: `false`)
+
+## Attributes
+
+The processor writes these attributes when the corresponding XFCC field is present:
+
+| XFCC field | Resource Attribute |
+| --- | --- |
+| `Subject` | `target_attribute` (default: `tls.client.subject`) |
+| `By` | `xfcc.by` |
+| `Hash` | `xfcc.hash` |
+| `URI` | `xfcc.uri` |
+| `DNS` | `xfcc.dns` |
+
+Certificate payloads are skipped by default. Enable `include_certificates` to also write:
+
+| XFCC field | Resource Attribute |
+| --- | --- |
+| `Cert` | `tls.client.certificate` |
+| `Chain` | `tls.client.certificate_chain` |
 
 ## Usage
 
@@ -40,7 +60,8 @@ receivers:
       http:
 
 processors:
-  xfccsubject: {}
+  xfccprocessor:
+    include_certificates: false
 
 exporters:
   debug:
@@ -49,15 +70,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [xfccsubject]
+      processors: [xfccprocessor]
       exporters: [debug]
     metrics:
       receivers: [otlp]
-      processors: [xfccsubject]
+      processors: [xfccprocessor]
       exporters: [debug]
     logs:
       receivers: [otlp]
-      processors: [xfccsubject]
+      processors: [xfccprocessor]
       exporters: [debug]
 ```
 

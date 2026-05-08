@@ -1,4 +1,4 @@
-package xfccsubjectprocessor
+package xfccprocessor
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
 
-var Type = component.MustNewType("xfccsubject")
+var Type = component.MustNewType("xfccprocessor")
 
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
@@ -23,8 +23,9 @@ func NewFactory() processor.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		TargetAttribute: "tls.client.subject",
-		Overwrite:       false,
+		TargetAttribute:     "tls.client.subject",
+		Overwrite:           false,
+		IncludeCertificates: false,
 	}
 }
 

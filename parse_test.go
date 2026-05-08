@@ -1,4 +1,4 @@
-package xfccsubjectprocessor
+package xfccprocessor
 
 import "testing"
 
@@ -139,5 +139,51 @@ func TestExtractSubjectFromJSON(t *testing.T) {
 				t.Fatalf("got=%q, want=%q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestExtractFieldsFromText(t *testing.T) {
+	got, ok := ExtractFields(`By=proxy;Hash=abc;Subject="CN=client";URI=spiffe://client;DNS=client.example;Cert="pem";Chain="chain"`)
+	if !ok {
+		t.Fatal("missing fields")
+	}
+
+	want := map[string]string{
+		"by":      "proxy",
+		"hash":    "abc",
+		"subject": "CN=client",
+		"uri":     "spiffe://client",
+		"dns":     "client.example",
+		"cert":    "pem",
+		"chain":   "chain",
+	}
+
+	for key, wantValue := range want {
+		if got[key] != wantValue {
+			t.Fatalf("%s=%q, want %q", key, got[key], wantValue)
+		}
+	}
+}
+
+func TestExtractFieldsFromJSON(t *testing.T) {
+	got, ok := ExtractFields(`[{"by":"proxy"},{"hash":"abc","subject":"CN=client","uri":"spiffe://client","dns":["client.example"],"cert":"pem","chain":"chain"}]`)
+	if !ok {
+		t.Fatal("missing fields")
+	}
+
+	want := map[string]string{
+		"by":      "proxy",
+		"hash":    "abc",
+		"subject": "CN=client",
+		"uri":     "spiffe://client",
+		"dns":     "client.example",
+		"cert":    "pem",
+		"chain":   "chain",
+	}
+
+	for key, wantValue := range want {
+		if got[key] != wantValue {
+			t.Fatalf("%s=%q, want %q", key, got[key], wantValue)
+		}
 	}
 }

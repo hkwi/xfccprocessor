@@ -1,6 +1,6 @@
-# xfccsubjectprocessor
+# xfccprocessor
 
-Envoy XFCC (`x-forwarded-client-cert`) から `subject` を抽出して、OpenTelemetry Resource Attribute に保存するカスタム Processor です。
+Envoy XFCC (`x-forwarded-client-cert`) の値を OpenTelemetry Resource Attribute に展開するカスタム Processor です。
 
 OpenTelemetry Semantic Conventions で client certificate subject は `tls.client.subject` として定義されているため、デフォルトの保存先は `tls.client.subject` です。
 
@@ -24,11 +24,31 @@ Envoy の仕様では text 形式の key は case-insensitive、`Subject` は do
 
 ```yaml
 processors:
-  xfccsubject: {}
+  xfccprocessor: {}
 ```
 
 - `target_attribute`: 抽出した subject を書き込む Resource Attribute (default: `tls.client.subject`)
 - `overwrite`: 既存の `target_attribute` を上書きするか (default: `false`)
+- `include_certificates`: 重い証明書値 (`Cert` / `Chain`) も展開するか (default: `false`)
+
+## 展開する属性
+
+対応する XFCC field がある場合、次の Resource Attribute を書き込みます。
+
+| XFCC field | Resource Attribute |
+| --- | --- |
+| `Subject` | `target_attribute` (default: `tls.client.subject`) |
+| `By` | `xfcc.by` |
+| `Hash` | `xfcc.hash` |
+| `URI` | `xfcc.uri` |
+| `DNS` | `xfcc.dns` |
+
+証明書 payload はデフォルトでは展開しません。`include_certificates` を有効にすると、次の属性も書き込みます。
+
+| XFCC field | Resource Attribute |
+| --- | --- |
+| `Cert` | `tls.client.certificate` |
+| `Chain` | `tls.client.certificate_chain` |
 
 ## 使い方（Collector 設定例）
 
@@ -40,7 +60,8 @@ receivers:
       http:
 
 processors:
-  xfccsubject: {}
+  xfccprocessor:
+    include_certificates: false
 
 exporters:
   debug:
@@ -49,15 +70,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [xfccsubject]
+      processors: [xfccprocessor]
       exporters: [debug]
     metrics:
       receivers: [otlp]
-      processors: [xfccsubject]
+      processors: [xfccprocessor]
       exporters: [debug]
     logs:
       receivers: [otlp]
-      processors: [xfccsubject]
+      processors: [xfccprocessor]
       exporters: [debug]
 ```
 

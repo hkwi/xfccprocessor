@@ -1,4 +1,4 @@
-package xfccsubjectprocessor
+package xfccprocessor
 
 import (
 	"encoding/json"
@@ -8,75 +8,86 @@ import (
 	"unicode/utf8"
 )
 
+type XFCCFields map[string]string
+
 func ExtractSubject(xfcc string) (string, bool) {
+	fields, ok := ExtractFields(xfcc)
+	if !ok {
+		return "", false
+	}
+	subject := fields["subject"]
+	return subject, subject != ""
+}
+
+func ExtractFields(xfcc string) (XFCCFields, bool) {
 	xfcc = strings.TrimSpace(xfcc)
 	if xfcc == "" {
-		return "", false
+		return nil, false
 	}
 
 	if strings.HasPrefix(xfcc, "{") || strings.HasPrefix(xfcc, "[") {
-		if subject, ok := extractFromJSON(xfcc); ok {
-			return subject, true
+		if fields, ok := extractFieldsFromJSON(xfcc); ok {
+			return fields, true
 		}
-		if subject, ok := extractFromJoinedJSON(xfcc); ok {
-			return subject, true
+		if fields, ok := extractFieldsFromJoinedJSON(xfcc); ok {
+			return fields, true
 		}
 	}
 
-	if subject, ok := extractFromText(xfcc); ok {
-		return subject, true
+	if fields, ok := extractFieldsFromText(xfcc); ok {
+		return fields, true
 	}
 
-	return "", false
+	return nil, false
 }
 
-func extractFromJSON(raw string) (string, bool) {
+func extractFieldsFromJSON(raw string) (XFCCFields, bool) {
 	var payload any
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return "", false
+		return nil, false
 	}
-	return findSubject(payload)
+	fields := XFCCFields{}
+	findFields(payload, fields)
+	return fields, len(fields) > 0
 }
 
-func extractFromJoinedJSON(raw string) (string, bool) {
+func extractFieldsFromJoinedJSON(raw string) (XFCCFields, bool) {
+	fields := XFCCFields{}
 	for _, part := range splitTopLevel(raw, ',') {
 		part = strings.TrimSpace(part)
 		if part == "" || !(strings.HasPrefix(part, "{") || strings.HasPrefix(part, "[")) {
 			continue
 		}
-		if subject, ok := extractFromJSON(part); ok {
-			return subject, true
+		if partFields, ok := extractFieldsFromJSON(part); ok {
+			mergeFirst(fields, partFields)
 		}
 	}
-	return "", false
+	return fields, len(fields) > 0
 }
 
-func findSubject(v any) (string, bool) {
+func findFields(v any, fields XFCCFields) {
 	switch vv := v.(type) {
 	case map[string]any:
 		for k, value := range vv {
-			if strings.EqualFold(k, "subject") {
-				if s, ok := subjectString(value); ok && s != "" {
-					return s, true
+			if fieldKey, ok := normalizeFieldKey(k); ok {
+				if _, exists := fields[fieldKey]; !exists {
+					if s, ok := fieldString(value); ok && s != "" {
+						fields[fieldKey] = s
+					}
 				}
 			}
 		}
 		for _, value := range vv {
-			if s, ok := findSubject(value); ok {
-				return s, true
-			}
+			findFields(value, fields)
 		}
 	case []any:
 		for _, value := range vv {
-			if s, ok := findSubject(value); ok {
-				return s, true
-			}
+			findFields(value, fields)
 		}
 	}
-	return "", false
 }
 
-func subjectString(value any) (string, bool) {
+func fieldString(value any) (string, bool) {
 	switch v := value.(type) {
 	case string:
 		return v, v != ""
@@ -90,7 +101,8 @@ func subjectString(value any) (string, bool) {
 	return "", false
 }
 
-func extractFromText(raw string) (string, bool) {
+func extractFieldsFromText(raw string) (XFCCFields, bool) {
+	fields := XFCCFields{}
 	entries := splitTopLevel(raw, ',')
 	for _, entry := range entries {
 		pairs := splitTopLevel(entry, ';')
@@ -105,13 +117,17 @@ func extractFromText(raw string) (string, bool) {
 				continue
 			}
 
-			if !strings.EqualFold(strings.TrimSpace(kv[0]), "subject") {
+			fieldKey, ok := normalizeFieldKey(strings.TrimSpace(kv[0]))
+			if !ok {
+				continue
+			}
+			if _, exists := fields[fieldKey]; exists {
 				continue
 			}
 
 			value := strings.TrimSpace(kv[1])
 			if value == "" {
-				return "", false
+				continue
 			}
 
 			if unquoted, ok := unquote(value); ok {
@@ -125,11 +141,42 @@ func extractFromText(raw string) (string, bool) {
 			}
 
 			if value != "" {
-				return value, true
+				fields[fieldKey] = value
 			}
 		}
 	}
+	return fields, len(fields) > 0
+}
+
+func normalizeFieldKey(key string) (string, bool) {
+	switch strings.ToLower(key) {
+	case "by":
+		return "by", true
+	case "hash":
+		return "hash", true
+	case "subject":
+		return "subject", true
+	case "uri":
+		return "uri", true
+	case "dns":
+		return "dns", true
+	case "cert":
+		return "cert", true
+	case "chain":
+		return "chain", true
+	}
 	return "", false
+}
+
+func mergeFirst(dst, src XFCCFields) {
+	for key, value := range src {
+		if value == "" {
+			continue
+		}
+		if _, exists := dst[key]; !exists {
+			dst[key] = value
+		}
+	}
 }
 
 func unquote(value string) (string, bool) {

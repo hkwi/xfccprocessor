@@ -1,4 +1,4 @@
-package xfccsubjectprocessor
+package xfccprocessor
 
 import (
 	"context"
@@ -10,16 +10,27 @@ import (
 )
 
 type xfccProcessor struct {
-	targetAttr string
-	overwrite  bool
+	targetAttr          string
+	overwrite           bool
+	includeCertificates bool
 }
 
 const sourceAttribute = "http.request.header.x-forwarded-client-cert"
 
+const (
+	attributeXFCCBy               = "xfcc.by"
+	attributeXFCCHash             = "xfcc.hash"
+	attributeXFCCURI              = "xfcc.uri"
+	attributeXFCCDNS              = "xfcc.dns"
+	attributeTLSClientCertificate = "tls.client.certificate"
+	attributeTLSClientCertChain   = "tls.client.certificate_chain"
+)
+
 func newProcessor(cfg *Config) *xfccProcessor {
 	return &xfccProcessor{
-		targetAttr: cfg.TargetAttribute,
-		overwrite:  cfg.Overwrite,
+		targetAttr:          cfg.TargetAttribute,
+		overwrite:           cfg.Overwrite,
+		includeCertificates: cfg.IncludeCertificates,
 	}
 }
 
@@ -50,29 +61,41 @@ func (p *xfccProcessor) processLogs(_ context.Context, ld plog.Logs) (plog.Logs,
 func (p *xfccProcessor) processResource(resource pcommon.Resource) {
 	attrs := resource.Attributes()
 
-	if !p.overwrite {
-		if _, exists := attrs.Get(p.targetAttr); exists {
-			return
-		}
-	}
-
 	xfccValue, ok := attrs.Get(sourceAttribute)
 	if !ok {
 		return
 	}
 
-	subject, ok := extractSubjectFromAttribute(xfccValue)
-	if !ok || subject == "" {
+	fields, ok := extractFieldsFromAttribute(xfccValue)
+	if !ok {
 		return
 	}
 
-	attrs.PutStr(p.targetAttr, subject)
+	p.putString(attrs, p.targetAttr, fields["subject"])
+	p.putString(attrs, attributeXFCCBy, fields["by"])
+	p.putString(attrs, attributeXFCCHash, fields["hash"])
+	p.putString(attrs, attributeXFCCURI, fields["uri"])
+	p.putString(attrs, attributeXFCCDNS, fields["dns"])
+	if p.includeCertificates {
+		p.putString(attrs, attributeTLSClientCertificate, fields["cert"])
+		p.putString(attrs, attributeTLSClientCertChain, fields["chain"])
+	}
 }
 
 func extractSubjectFromAttribute(value pcommon.Value) (string, bool) {
+	fields, ok := extractFieldsFromAttribute(value)
+	if !ok {
+		return "", false
+	}
+	subject := fields["subject"]
+	return subject, subject != ""
+}
+
+func extractFieldsFromAttribute(value pcommon.Value) (XFCCFields, bool) {
+	fields := XFCCFields{}
 	switch value.Type() {
 	case pcommon.ValueTypeStr:
-		return ExtractSubject(value.Str())
+		return ExtractFields(value.Str())
 	case pcommon.ValueTypeSlice:
 		slice := value.Slice()
 		for i := 0; i < slice.Len(); i++ {
@@ -80,10 +103,22 @@ func extractSubjectFromAttribute(value pcommon.Value) (string, bool) {
 			if item.Type() != pcommon.ValueTypeStr {
 				continue
 			}
-			if subject, ok := ExtractSubject(item.Str()); ok {
-				return subject, true
+			if itemFields, ok := ExtractFields(item.Str()); ok {
+				mergeFirst(fields, itemFields)
 			}
 		}
 	}
-	return "", false
+	return fields, len(fields) > 0
+}
+
+func (p *xfccProcessor) putString(attrs pcommon.Map, key string, value string) {
+	if value == "" {
+		return
+	}
+	if !p.overwrite {
+		if _, exists := attrs.Get(key); exists {
+			return
+		}
+	}
+	attrs.PutStr(key, value)
 }
